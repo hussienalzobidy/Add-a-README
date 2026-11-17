@@ -1,0 +1,336 @@
+# Power Plant Checklist - builds an Android APK automatically.
+# Save this file in your GitHub repository as: .github/workflows/build.yml
+name: Build APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Create app source
+        run: |
+          mkdir -p app/src/main/java/com/plant/checklist app/src/main/res/drawable app/src/main/assets
+          cat > settings.gradle <<'APPEOF'
+          pluginManagement {
+              repositories { google(); mavenCentral(); gradlePluginPortal() }
+          }
+          dependencyResolutionManagement {
+              repositories { google(); mavenCentral() }
+          }
+          rootProject.name = "PowerPlantChecklist"
+          include ':app'
+          APPEOF
+          cat > build.gradle <<'APPEOF'
+          plugins {
+              id 'com.android.application' version '8.5.2' apply false
+          }
+          APPEOF
+          cat > app/build.gradle <<'APPEOF'
+          plugins {
+              id 'com.android.application'
+          }
+          android {
+              namespace = 'com.plant.checklist'
+              compileSdk = 34
+              defaultConfig {
+                  applicationId = 'com.plant.checklist'
+                  minSdk = 24
+                  targetSdk = 34
+                  versionCode = 1
+                  versionName = '1.0'
+              }
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+          }
+          APPEOF
+          cat > app/src/main/AndroidManifest.xml <<'APPEOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <application
+                  android:label="Plant Checklist"
+                  android:icon="@drawable/ic_launcher"
+                  android:theme="@android:style/Theme.Material.Light.NoActionBar">
+                  <activity android:name=".MainActivity" android:exported="true"
+                      android:windowSoftInputMode="adjustResize">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          APPEOF
+          cat > app/src/main/java/com/plant/checklist/MainActivity.java <<'APPEOF'
+          package com.plant.checklist;
+
+          import android.app.Activity;
+          import android.content.Intent;
+          import android.os.Bundle;
+          import android.webkit.JavascriptInterface;
+          import android.webkit.WebChromeClient;
+          import android.webkit.WebSettings;
+          import android.webkit.WebView;
+          import android.webkit.WebViewClient;
+
+          public class MainActivity extends Activity {
+              private WebView web;
+
+              public class Bridge {
+                  @JavascriptInterface
+                  public void share(String text) {
+                      Intent i = new Intent(Intent.ACTION_SEND);
+                      i.setType("text/plain");
+                      i.putExtra(Intent.EXTRA_TEXT, text);
+                      startActivity(Intent.createChooser(i, "Share report"));
+                  }
+              }
+
+              @Override
+              protected void onCreate(Bundle b) {
+                  super.onCreate(b);
+                  web = new WebView(this);
+                  WebSettings s = web.getSettings();
+                  s.setJavaScriptEnabled(true);
+                  s.setDomStorageEnabled(true);
+                  web.setWebViewClient(new WebViewClient());
+                  web.setWebChromeClient(new WebChromeClient());
+                  web.addJavascriptInterface(new Bridge(), "Android");
+                  setContentView(web);
+                  web.loadUrl("file:///android_asset/index.html");
+              }
+
+              @Override
+              public void onBackPressed() {
+                  if (web != null && web.canGoBack()) web.goBack();
+                  else super.onBackPressed();
+              }
+          }
+          APPEOF
+          cat > app/src/main/res/drawable/ic_launcher.xml <<'APPEOF'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp" android:height="108dp"
+              android:viewportWidth="108" android:viewportHeight="108">
+              <path android:fillColor="#14213D" android:pathData="M54,4a50,50 0,1 1,0 100a50,50 0,1 1,0 -100z"/>
+              <path android:fillColor="#F2A900" android:pathData="M60,18L32,60h18l-6,30l30,-44h-18z"/>
+          </vector>
+          APPEOF
+          cat > app/src/main/assets/index.html <<'APPEOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>Plant Checklist</title>
+          <style>
+          :root{--navy:#14213d;--amber:#f2a900;--ok:#1f8a4c;--bad:#c62828;--bg:#f3f4f6;--card:#fff;--muted:#6b7280;--line:#e5e7eb}
+          *{box-sizing:border-box}
+          body{margin:0;font-family:system-ui,Roboto,sans-serif;background:var(--bg);color:#111827;-webkit-tap-highlight-color:transparent}
+          header{background:var(--navy);color:#fff;padding:14px 16px 0;position:sticky;top:0;z-index:5}
+          header h1{margin:0;font-size:19px}
+          .bolt{color:var(--amber)}
+          .tabs{display:flex;margin-top:8px}
+          .tabs button{flex:1;background:none;color:#cbd5e1;border:0;border-bottom:3px solid transparent;padding:10px 0;font-size:14px;font-weight:600}
+          .tabs button.on{color:#fff;border-color:var(--amber)}
+          main{padding:12px 12px 90px}
+          .card{background:var(--card);border-radius:12px;padding:12px;margin-bottom:12px;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+          label{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase}
+          input,select{width:100%;font:inherit;padding:10px;border:1px solid var(--line);border-radius:8px;margin-top:4px;background:#fff}
+          .row{display:flex;gap:10px}.row>div{flex:1}
+          .progress{height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin-top:12px}
+          .progress i{display:block;height:100%;background:var(--ok);width:0;transition:width .2s}
+          .summary{display:flex;justify-content:space-between;font-size:14px;margin-top:6px;color:var(--muted)}
+          .sec h2{font-size:15px;margin:0 0 4px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+          .sec h2 small{color:var(--muted);font-weight:500}
+          .item{border-top:1px solid var(--line);padding:10px 0}
+          .itop{display:flex;align-items:center;gap:8px}
+          .itop span{flex:1;font-size:15px}
+          .st{border:1.5px solid var(--line);background:#fff;border-radius:8px;min-width:46px;height:40px;font-size:17px;font-weight:700;color:var(--muted)}
+          .st.ok.on{background:var(--ok);border-color:var(--ok);color:#fff}
+          .st.bad.on{background:var(--bad);border-color:var(--bad);color:#fff}
+          .del{border:0;background:none;color:var(--bad);font-size:22px;padding:0 6px}
+          .note{margin-top:8px;border-color:#f5b5b5;background:#fff7f7}
+          .add{display:flex;gap:8px;margin-top:10px}
+          .add input{margin:0}
+          .btn{border:0;border-radius:10px;padding:12px 14px;font:inherit;font-weight:700}
+          .primary{background:var(--navy);color:#fff}
+          .amber{background:var(--amber);color:#111}
+          .ghost{background:#e5e7eb;color:#111}
+          .danger{background:#fde8e8;color:var(--bad)}
+          .full{width:100%;margin-top:8px}
+          .bar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);padding:10px 12px;display:flex;gap:8px}
+          .bar .btn{flex:1}
+          .h{border-top:1px solid var(--line);padding:12px 0}
+          .h:first-child{border-top:0;padding-top:0}
+          .h b{font-size:15px}
+          .meta{color:var(--muted);font-size:13px;margin:4px 0 8px}
+          .tag{display:inline-block;font-size:12px;padding:2px 8px;border-radius:10px;font-weight:700;margin-right:4px}
+          .tag.g{background:#dcfce7;color:var(--ok)}.tag.r{background:#fde8e8;color:var(--bad)}.tag.n{background:#eef;color:#445}
+          .hb{display:flex;gap:8px;margin-top:8px}.hb .btn{flex:1;padding:9px}
+          .empty{color:var(--muted);text-align:center;padding:24px 0}
+          .hidden{display:none}
+          .toast{position:fixed;left:50%;bottom:80px;transform:translateX(-50%);background:#111;color:#fff;padding:10px 16px;border-radius:20px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}
+          .toast.show{opacity:1}
+          </style>
+          </head>
+          <body>
+          <header>
+            <h1><span class="bolt">&#9889;</span> Power Plant Checklist</h1>
+            <div class="tabs">
+              <button id="t-check" class="on" onclick="tab('check')">Checklist</button>
+              <button id="t-hist" onclick="tab('hist')">History</button>
+              <button id="t-edit" onclick="tab('edit')">Edit items</button>
+            </div>
+          </header>
+          <main>
+            <section id="v-check">
+              <div class="card">
+                <div class="row">
+                  <div><label>Operator</label><input id="op" placeholder="Your name" oninput="S.cur.operator=this.value;save()"></div>
+                  <div><label>Shift</label><select id="shift" onchange="S.cur.shift=this.value;save()"><option>Morning</option><option>Evening</option><option>Night</option></select></div>
+                </div>
+                <div class="progress"><i id="prog"></i></div>
+                <div class="summary" id="sum"></div>
+              </div>
+              <div id="secs"></div>
+            </section>
+            <section id="v-hist" class="hidden"><div class="card" id="hist"></div></section>
+            <section id="v-edit" class="hidden">
+              <div id="edit"></div>
+              <div class="card">
+                <label>New section</label>
+                <div class="add"><input id="newsec" placeholder="e.g. Switchyard"><button class="btn amber" onclick="addSec()">Add</button></div>
+              </div>
+              <button class="btn ghost full" onclick="restore()">Restore default items</button>
+              <button class="btn danger full" onclick="clearHist()">Clear all history</button>
+            </section>
+          </main>
+          <div class="bar" id="bar">
+            <button class="btn ghost" onclick="resetCur()">Reset</button>
+            <button class="btn amber" onclick="shareCur()">Share</button>
+            <button class="btn primary" onclick="saveRec()">Save</button>
+          </div>
+          <div class="toast" id="toast"></div>
+          <script>
+          var DEF=[
+           ['Turbine',['Lube oil pressure normal','Bearing temperatures normal','Vibration within limits','No oil or steam leaks']],
+           ['Generator',['Stator winding temperature normal','Generator cooling system running','Excitation system normal']],
+           ['Boiler / HRSG',['Drum level normal','Feedwater pumps running normally','Steam pressure and temperature normal']],
+           ['Transformers',['Oil level and temperature normal','No abnormal noise','Breather silica gel OK']],
+           ['Cooling Water',['Circulating pumps running normally','Cooling tower fans OK','Basin level normal']],
+           ['Safety',['Fire extinguishers in place','Emergency exits clear','PPE available','No active alarms on DCS']]
+          ];
+          var KEY='ppc_v1',S=null,n=0;
+          function $(id){return document.getElementById(id)}
+          function uid(){return Date.now().toString(36)+(n++).toString(36)+Math.random().toString(36).slice(2,6)}
+          function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+          function autoShift(){var h=new Date().getHours();return h>=6&&h<14?'Morning':h>=14&&h<22?'Evening':'Night'}
+          function defaults(){return DEF.map(function(s){return {id:uid(),name:s[0],items:s[1].map(function(t){return {id:uid(),text:t}})}})}
+          function blank(){return {operator:(S&&S.cur&&S.cur.operator)||'',shift:autoShift(),status:{},notes:{}}}
+          function load(){try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){S=null}
+           if(!S||!S.sections){S={sections:defaults(),cur:null,hist:[]};S.cur=blank()}}
+          function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+          function toast(m){var t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(function(){t.classList.remove('show')},1800)}
+
+          function tab(v){['check','hist','edit'].forEach(function(x){$('v-'+x).classList.toggle('hidden',x!==v);$('t-'+x).classList.toggle('on',x===v)});
+           $('bar').classList.toggle('hidden',v!=='check');
+           if(v==='check')renderCheck();if(v==='hist')renderHist();if(v==='edit')renderEdit();window.scrollTo(0,0)}
+
+          function renderCheck(){
+           var c=S.cur,tot=0,ok=0,bad=0,h='';
+           $('op').value=c.operator;$('shift').value=c.shift;
+           S.sections.forEach(function(sec){
+            var done=0,ih='';
+            sec.items.forEach(function(it){tot++;var st=c.status[it.id];if(st)done++;if(st==='ok')ok++;if(st==='bad')bad++;
+             ih+='<div class="item"><div class="itop"><span>'+esc(it.text)+'</span>'+
+              '<button class="st ok'+(st==='ok'?' on':'')+'" onclick="setSt(\''+it.id+'\',\'ok\')">&#10003;</button>'+
+              '<button class="st bad'+(st==='bad'?' on':'')+'" onclick="setSt(\''+it.id+'\',\'bad\')">&#10007;</button></div>'+
+              (st==='bad'?'<input class="note" placeholder="Describe the fault..." value="'+esc(c.notes[it.id]||'')+'" oninput="setNote(\''+it.id+'\',this.value)">':'')+'</div>'});
+            h+='<div class="card sec"><h2>'+esc(sec.name)+' <small>'+done+'/'+sec.items.length+'</small></h2>'+(ih||'<div class="empty">No items</div>')+'</div>'});
+           $('secs').innerHTML=h;
+           $('prog').style.width=(tot?(ok+bad)/tot*100:0)+'%';
+           $('sum').innerHTML='<span>'+(ok+bad)+' of '+tot+' checked</span>'+(bad?'<b style="color:var(--bad)">'+bad+' fault'+(bad>1?'s':'')+'</b>':'');
+          }
+          function setSt(id,v){var s=S.cur.status;if(s[id]===v)delete s[id];else s[id]=v;save();renderCheck()}
+          function setNote(id,v){S.cur.notes[id]=v;save()}
+
+          function snapshot(){var c=S.cur,r={id:uid(),time:Date.now(),operator:c.operator,shift:c.shift,ok:0,bad:0,tot:0,secs:[]};
+           S.sections.forEach(function(sec){r.secs.push({name:sec.name,items:sec.items.map(function(it){var st=c.status[it.id]||'';r.tot++;if(st==='ok')r.ok++;if(st==='bad')r.bad++;
+            return {text:it.text,st:st,note:st==='bad'?(c.notes[it.id]||''):''}})})});return r}
+          function report(r){var L=['POWER PLANT CHECKLIST','Date: '+new Date(r.time).toLocaleString(),'Shift: '+r.shift+'   Operator: '+(r.operator||'-'),
+           'Result: '+r.ok+' OK, '+r.bad+' fault(s), '+(r.tot-r.ok-r.bad)+' not checked',''];
+           var f=[];r.secs.forEach(function(s){s.items.forEach(function(i){if(i.st==='bad')f.push('! '+s.name+': '+i.text+(i.note?' - '+i.note:''))})});
+           if(f.length){L.push('FAULTS:');L=L.concat(f);L.push('')}
+           r.secs.forEach(function(s){L.push('-- '+s.name+' --');s.items.forEach(function(i){L.push((i.st==='ok'?'[OK] ':i.st==='bad'?'[FAULT] ':'[ - ] ')+i.text+(i.note?' ('+i.note+')':''))});L.push('')});
+           return L.join('\n')}
+          function share(t){try{if(window.Android&&Android.share){Android.share(t);return}}catch(e){}
+           if(navigator.share){navigator.share({text:t}).catch(function(){});return}
+           var a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();try{document.execCommand('copy');toast('Report copied')}catch(e){}a.remove()}
+          function shareCur(){share(report(snapshot()))}
+          function saveRec(){var r=snapshot(),done=r.ok+r.bad;
+           if(!done){toast('Nothing checked yet');return}
+           if(done<r.tot&&!confirm((r.tot-done)+' item(s) not checked. Save anyway?'))return;
+           S.hist.unshift(r);S.cur=blank();save();renderCheck();window.scrollTo(0,0);toast('Checklist saved')}
+          function resetCur(){if(confirm('Clear all ticks on the current checklist?')){S.cur=blank();save();renderCheck()}}
+
+          function renderHist(){
+           if(!S.hist.length){$('hist').innerHTML='<div class="empty">No saved checklists yet</div>';return}
+           $('hist').innerHTML=S.hist.map(function(r){return '<div class="h"><b>'+esc(new Date(r.time).toLocaleString())+'</b>'+
+            '<div class="meta">'+esc(r.shift)+' shift &middot; '+esc(r.operator||'No operator')+'</div>'+
+            '<span class="tag g">'+r.ok+' OK</span>'+(r.bad?'<span class="tag r">'+r.bad+' fault'+(r.bad>1?'s':'')+'</span>':'')+
+            (r.tot-r.ok-r.bad?'<span class="tag n">'+(r.tot-r.ok-r.bad)+' not checked</span>':'')+
+            '<div class="hb"><button class="btn amber" onclick="shareRec(\''+r.id+'\')">Share report</button><button class="btn danger" onclick="delRec(\''+r.id+'\')">Delete</button></div></div>'}).join('')}
+          function findRec(id){return S.hist.filter(function(r){return r.id===id})[0]}
+          function shareRec(id){var r=findRec(id);if(r)share(report(r))}
+          function delRec(id){if(confirm('Delete this saved checklist?')){S.hist=S.hist.filter(function(r){return r.id!==id});save();renderHist()}}
+          function clearHist(){if(confirm('Delete ALL saved checklists?')){S.hist=[];save();toast('History cleared')}}
+
+          function renderEdit(){
+           $('edit').innerHTML=S.sections.map(function(sec){
+            return '<div class="card sec"><h2>'+esc(sec.name)+'<button class="del" onclick="delSec(\''+sec.id+'\')">&#128465;</button></h2>'+
+             sec.items.map(function(it){return '<div class="item"><div class="itop"><span>'+esc(it.text)+'</span><button class="del" onclick="delItem(\''+sec.id+'\',\''+it.id+'\')">&times;</button></div></div>'}).join('')+
+             '<div class="add"><input id="in-'+sec.id+'" placeholder="New item"><button class="btn amber" onclick="addItem(\''+sec.id+'\')">Add</button></div></div>'}).join('')}
+          function sec(id){return S.sections.filter(function(s){return s.id===id})[0]}
+          function addItem(sid){var i=$('in-'+sid),t=i.value.trim();if(!t)return;sec(sid).items.push({id:uid(),text:t});save();renderEdit();toast('Item added')}
+          function delItem(sid,iid){var s=sec(sid);s.items=s.items.filter(function(i){return i.id!==iid});save();renderEdit()}
+          function addSec(){var i=$('newsec'),t=i.value.trim();if(!t)return;S.sections.push({id:uid(),name:t,items:[]});i.value='';save();renderEdit()}
+          function delSec(id){if(confirm('Delete section "'+sec(id).name+'" and its items?')){S.sections=S.sections.filter(function(s){return s.id!==id});save();renderEdit()}}
+          function restore(){if(confirm('Replace all items with the default list? Saved history is kept.')){S.sections=defaults();S.cur.status={};S.cur.notes={};save();renderEdit();toast('Defaults restored')}}
+
+          load();renderCheck();
+          </script>
+          </body>
+          </html>
+          APPEOF
+
+      - name: Build APK
+        run: gradle assembleDebug --no-daemon
+
+      - name: Publish APK as a release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk PowerPlantChecklist.apk
+          gh release create "v1.${{ github.run_number }}" PowerPlantChecklist.apk --title "Power Plant Checklist (build ${{ github.run_number }})" --notes "Tap PowerPlantChecklist.apk below to download, then open it on your phone to install."
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PowerPlantChecklist-apk
+          path: PowerPlantChecklist.apk
